@@ -27,6 +27,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <pcap/pcap.h>
 #include <sndfile.h>
 
+#include "mrpdclient.h"
 #include "listener_mrp_client.h"
 
 #define DEBUG 0
@@ -61,6 +62,7 @@ struct ethernet_header{
 static const char *version_str = "simple_listener v" VERSION_STR "\n"
     "Copyright (c) 2012, Intel Corporation\n";
 
+int glob_mrpd_sock = INVALID_SOCKET;
 pcap_t* glob_pcap_handle;
 u_char glob_ether_type[] = { 0x22, 0xf0 };
 SNDFILE* glob_snd_file;
@@ -141,14 +143,13 @@ void sigint_handler(int signum)
 	fprintf(stdout,"Received signal %d:leaving...\n", signum);
 
 	if (0 != talker)
-		send_leave();
+		send_leave(glob_mrpd_sock);
 
-	if (2 > control_socket)
+	if (-1 != glob_mrpd_sock)
 	{
-		close(control_socket);
-		ret = mrp_disconnect();
+		ret = mrpdclient_close(&glob_mrpd_sock);
 		if (ret)
-			printf("mrp_disconnect failed\n");
+			printf("mrpd_close failed\n");
 	}
 
 #if PCAP
@@ -197,22 +198,22 @@ int main(int argc, char *argv[])
 	if ((NULL == dev) || (NULL == file_name))
 		help();
 
-	if (create_socket())
-	{
-		fprintf(stderr, "Socket creation failed.\n");
-		return errno;
+	glob_mrpd_sock = mrpdclient_init();
+	if (glob_mrpd_sock == SOCKET_ERROR) {
+		printf("mrpdclient_init failed\n");
+		return EXIT_FAILURE;
 	}
 
-	report_domain_status();
-	join_vlan();
+	report_domain_status(glob_mrpd_sock);
+	join_vlan(glob_mrpd_sock);
 
 	fprintf(stdout,"Waiting for talker...\n");
-	await_talker();	
+	await_talker(glob_mrpd_sock);
 
 #if DEBUG
 	fprintf(stdout,"Send ready-msg...\n");
 #endif /* DEBUG */
-	send_ready();
+	send_ready(glob_mrpd_sock);
 		
 #if LIBSND
 	SF_INFO* sf_info = (SF_INFO*)malloc(sizeof(SF_INFO));

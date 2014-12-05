@@ -1,18 +1,23 @@
 CC = gcc
 OPT = -O2 -g
 CFLAGS = $(OPT) -Wall -Wextra -Wno-parentheses
-INCFLAGS = -I../../daemons/mrpd -I../common
+INCFLAGS = -I../../daemons/mrpd -I../common -I../mrp_client
 LDLIBS = -lpcap -lsndfile
 
 all: simple_listener
 
-simple_listener: simple_listener.o ../common/listener_mrp_client.o
+simple_listener: simple_listener.o ../common/listener_mrp_client.o ../mrp_client/mrpdclient.o
 
 simple_listener.o: simple_listener.c
 	$(CC) $(CFLAGS) $(INCFLAGS) -c simple_listener.c
 
 ../common/listener_mrp_client.o: ../common/listener_mrp_client.c ../common/listener_mrp_client.h
 	make -C ../common/ listener_mrp_client.o
+
+../mrp_client/mrpdclient.o: \
+	../../examples/mrp_client/mrpdclient.c \
+	../../examples/mrp_client/mrpdclient.h
+	make -C ../../examples/mrp_client/ mrpdclient.o
 
 %: %.o
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@

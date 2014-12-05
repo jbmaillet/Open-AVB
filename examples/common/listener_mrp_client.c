@@ -22,39 +22,15 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-/*
- * simple_listener MRP client part
- * gcc -Wall -c -I../../daemons/mrpd listener_mrp_client.c
- */
-
+#include "mrpdclient.h"
 #include "listener_mrp_client.h"
 
 /* global variables */
 
-int control_socket;
 volatile int talker = 0;
 unsigned char stream_id[8];
 
-/*
- * private
- */
-
-int send_msg(char *data, int data_len)
-{
-	struct sockaddr_in addr;
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(MRPD_PORT_DEFAULT);
-	addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-	inet_aton("127.0.0.1", &addr.sin_addr);
-	if (-1 != control_socket)
-		return sendto(control_socket, data, data_len, 0,
-			(struct sockaddr*)&addr, (socklen_t)sizeof(addr));
-	else
-		return 0;
-}
-
-int msg_process(char *buf, int buflen)
+static int msg_process(char *buf, int buflen)
 {
 	uint32_t id;
 	int j, l;
@@ -74,103 +50,72 @@ int msg_process(char *buf, int buflen)
 		}
 		talker = 1;
 	}
+
 	return 0;
-}
-
-int recv_msg()
-{
-	char *databuf;
-	int bytes = 0;
-	int ret;
-
-	databuf = (char *)malloc(2000);
-	if (NULL == databuf)
-		return -1;
-
-	memset(databuf, 0, 2000);
-	bytes = recv(control_socket, databuf, 2000, 0);
-	if (bytes <= -1)
-	{
-		free(databuf);
-		return -1;
-	}
-	ret = msg_process(databuf, bytes);
-	free(databuf);
-
-	return ret;
 }
 
 /*
  * public
  */
 
-int create_socket() // TODO FIX! =:-|
-{
-	struct sockaddr_in addr;
-	control_socket = socket(AF_INET, SOCK_DGRAM, 0);
-		
-	/** in POSIX fd 0,1,2 are reserved */
-	if (2 > control_socket)
-	{
-		if (-1 > control_socket)
-			close(control_socket);
-	return -1;
-	}
-	
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(0);
-	
-	if(0 > (bind(control_socket, (struct sockaddr*)&addr, sizeof(addr)))) 
-	{
-		fprintf(stderr, "Could not bind socket.\n");
-		close(control_socket);
-		return -1;
-	}
-	return 0;
-}
-
-int report_domain_status()
+int report_domain_status(SOCKET mrpd_sock)
 {
 	int rc;
-	char* msgbuf = malloc(1500);
+	char* msgbuf;
 
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
+
+	msgbuf = malloc(1500);
 	if (NULL == msgbuf)
 		return -1;
 	memset(msgbuf, 0, 1500);
 	sprintf(msgbuf, "S+D:C=6,P=3,V=0002");
 	
-	rc = send_msg(msgbuf, 1500);
-
+	rc = mrpdclient_sendto(mrpd_sock, msgbuf, 1500);
 	free(msgbuf);
+
 	return rc;
 }
 
-int join_vlan()
+int join_vlan(SOCKET mrpd_sock)
 {
 	int rc;
-	char *msgbuf = malloc(1500);
+	char *msgbuf;
+
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
+
+	msgbuf = malloc(1500);
 	if (NULL == msgbuf)
 		return -1;
 	memset(msgbuf, 0, 1500);
 	sprintf(msgbuf, "V++:I=0002");
-	rc = send_msg(msgbuf, 1500);
-
+	rc = mrpdclient_sendto(mrpd_sock, msgbuf, 1500);
 	free(msgbuf);
+
 	return rc;
 }
 
-int await_talker()
+int await_talker(SOCKET mrpd_sock)
 {
-	while (0 == talker)	
-		recv_msg();
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
+
+	while (0 == talker)
+		mrpdclient_recv(mrpd_sock, msg_process);
+
 	return 0;
 }
 
-int send_ready()
+int send_ready(SOCKET mrpd_sock)
 {
 	char *databuf;
 	int rc;
+
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
+
 	databuf = malloc(1500);
 	if (NULL == databuf)
 		return -1;
@@ -180,20 +125,23 @@ int send_ready()
 		     stream_id[2], stream_id[3],
 		     stream_id[4], stream_id[5],
 		     stream_id[6], stream_id[7]);
-	rc = send_msg(databuf, 1500);
-
+	rc = mrpdclient_sendto(mrpd_sock, databuf, 1500);
 #ifdef DEBUG
 	fprintf(stdout,"Ready-Msg: %s\n", databuf);
 #endif 
-
 	free(databuf);
+
 	return rc;
 }
 
-int send_leave()
+int send_leave(SOCKET mrpd_sock)
 {
 	char *databuf;
 	int rc;
+
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
+
 	databuf = malloc(1500);
 	if (NULL == databuf)
 		return -1;
@@ -203,23 +151,8 @@ int send_leave()
 		     stream_id[2], stream_id[3],
 		     stream_id[4], stream_id[5],
 		     stream_id[6], stream_id[7]);
-	rc = send_msg(databuf, 1500);
+	rc = mrpdclient_sendto(mrpd_sock, databuf, 1500);
 	free(databuf);
-	return rc;
-}
-
-int mrp_disconnect()
-{
-	int rc;
-	char *msgbuf = malloc(1500);
-
-	if (NULL == msgbuf)
-		return -1;
-	memset(msgbuf, 0, 1500);
-
-	sprintf(msgbuf, "BYE");
-	rc = send_msg(msgbuf, 1500);
-	free(msgbuf);
 
 	return rc;
 }

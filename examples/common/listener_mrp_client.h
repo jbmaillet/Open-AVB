@@ -39,20 +39,17 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /* global variables */
 
-// TODO move these in a talker_context struct + init func
+// TODO move these in a listener_context struct + init func
 
-extern int control_socket;
 extern volatile int talker;
 extern unsigned char stream_id[8];
 
 /* functions */
 
-int create_socket();
-int report_domain_status();
-int join_vlan();
-int await_talker();
-int send_ready();
-int send_leave();
-int mrp_disconnect();
+int report_domain_status(SOCKET mrpd_sock);
+int join_vlan(SOCKET mrpd_sock);
+int await_talker(SOCKET mrpd_sock);
+int send_ready(SOCKET mrpd_sock);
+int send_leave(SOCKET mrpd_sock);
 
 #endif /* _LISTENER_MRP_CLIENT_H_ */
