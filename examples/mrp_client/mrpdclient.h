@@ -35,6 +35,12 @@
 #ifndef _MRPDCLIENT_H_
 #define _MRPDCLIENT_H_
 
+#if defined __linux__
+typedef int SOCKET;
+#define INVALID_SOCKET -1
+#define SOCKET_ERROR   -1
+#endif
+
 #define MRPDCLIENT_MAX_MSG_SIZE 2000
 
 typedef int (*ptr_process_mrpd_msg) (char *buf, int buflen);
