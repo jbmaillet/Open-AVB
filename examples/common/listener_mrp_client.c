@@ -66,13 +66,13 @@ int report_domain_status(SOCKET mrpd_sock)
 	if (SOCKET_ERROR == mrpd_sock)
 		return -1;
 
-	msgbuf = malloc(1500);
+	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
 		return -1;
-	memset(msgbuf, 0, 1500);
+	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
 	sprintf(msgbuf, "S+D:C=6,P=3,V=0002");
 	
-	rc = mrpdclient_sendto(mrpd_sock, msgbuf, 1500);
+	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
 	free(msgbuf);
 
 	return rc;
@@ -86,12 +86,12 @@ int join_vlan(SOCKET mrpd_sock)
 	if (SOCKET_ERROR == mrpd_sock)
 		return -1;
 
-	msgbuf = malloc(1500);
+	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
 		return -1;
-	memset(msgbuf, 0, 1500);
+	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
 	sprintf(msgbuf, "V++:I=0002");
-	rc = mrpdclient_sendto(mrpd_sock, msgbuf, 1500);
+	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
 	free(msgbuf);
 
 	return rc;
@@ -116,19 +116,17 @@ int send_ready(SOCKET mrpd_sock)
 	if (SOCKET_ERROR == mrpd_sock)
 		return -1;
 
-	databuf = malloc(1500);
+	databuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == databuf)
 		return -1;
-	memset(databuf, 0, 1500);
+	memset(databuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
 	sprintf(databuf, "S+L:L=%02x%02x%02x%02x%02x%02x%02x%02x, D=2",
 		     stream_id[0], stream_id[1],
 		     stream_id[2], stream_id[3],
 		     stream_id[4], stream_id[5],
 		     stream_id[6], stream_id[7]);
-	rc = mrpdclient_sendto(mrpd_sock, databuf, 1500);
-#ifdef DEBUG
-	fprintf(stdout,"Ready-Msg: %s\n", databuf);
-#endif 
+	rc = mrpdclient_sendto(mrpd_sock, databuf, MRPDCLIENT_MAX_MSG_SIZE);
+
 	free(databuf);
 
 	return rc;
@@ -142,16 +140,16 @@ int send_leave(SOCKET mrpd_sock)
 	if (SOCKET_ERROR == mrpd_sock)
 		return -1;
 
-	databuf = malloc(1500);
+	databuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == databuf)
 		return -1;
-	memset(databuf, 0, 1500);
+	memset(databuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
 	sprintf(databuf, "S-L:L=%02x%02x%02x%02x%02x%02x%02x%02x, D=3",
 		     stream_id[0], stream_id[1],
 		     stream_id[2], stream_id[3],
 		     stream_id[4], stream_id[5],
 		     stream_id[6], stream_id[7]);
-	rc = mrpdclient_sendto(mrpd_sock, databuf, 1500);
+	rc = mrpdclient_sendto(mrpd_sock, databuf, MRPDCLIENT_MAX_MSG_SIZE);
 	free(databuf);
 
 	return rc;
