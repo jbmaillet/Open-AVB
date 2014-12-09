@@ -31,6 +31,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <jack/ringbuffer.h>
 #include <sndfile.h>
 
+#include "mrpdclient.h"
 #include "listener_mrp_client.h"
 
 #define LIBSND 1
@@ -66,6 +67,7 @@ struct ethernet_header{
 static const char *version_str = "jack_listener v" VERSION_STR "\n"
     "Copyright (c) 2013, Katja Rohloff\n";
 
+int glob_mrpd_sock = INVALID_SOCKET;
 pcap_t* handle;
 u_char glob_ether_type[] = { 0x22, 0xf0 };
 SNDFILE* snd_file;
@@ -89,16 +91,22 @@ static void help()
 
 void shutdown_and_exit(int sig)
 {
+	int ret;
+
 	if (sig != 0)
 		fprintf(stdout,"Received signal %d:", sig);
 	fprintf(stdout,"Leaving...\n");
 
 	if (0 != talker) {
-		send_leave();
+		send_leave(glob_mrpd_sock);
 	}
 
-	mrp_disconnect();
-	close(control_socket);
+	if (-1 != glob_mrpd_sock)
+	{
+		ret = mrpdclient_close(&glob_mrpd_sock);
+		if (ret)
+			printf("mrpd_close failed\n");
+	}
 
 	if (NULL != handle) {
 		pcap_breakloop(handle);
@@ -323,19 +331,21 @@ int main(int argc, char *argv[])
 		help();
 	}
 
-	if (create_socket()) {
-		fprintf(stderr, "Socket creation failed.\n");
-		return errno;
+	glob_mrpd_sock = mrpdclient_init();
+	if (glob_mrpd_sock == SOCKET_ERROR) {
+		printf("mrpdclient_init failed\n");
+		return EXIT_FAILURE;
 	}
 
-	report_domain_status();
+	report_domain_status(glob_mrpd_sock);
+	join_vlan(glob_mrpd_sock);
 
 	init_jack();
 	
 	fprintf(stdout,"Waiting for talker...\n");
-	await_talker();	
+	await_talker(glob_mrpd_sock);
 
-	send_ready();
+	send_ready(glob_mrpd_sock);
 
 #if LIBSND
 	char* filename = "listener.wav";
