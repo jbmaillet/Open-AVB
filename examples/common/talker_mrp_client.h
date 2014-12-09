@@ -70,13 +70,11 @@ extern u_int16_t domain_class_b_vid;
 
 /* functions */
 
-int mrp_connect(void);
-int mrp_disconnect(void);
-int mrp_monitor(void);
-int mrp_register_domain(int *class_id, int *priority, u_int16_t *vid);
-int mrp_join_vlan(void);
-int mrp_advertise_stream(uint8_t * streamid, uint8_t * destaddr, u_int16_t vlan, int pktsz, int interval, int priority, int latency);
-int mrp_unadvertise_stream(uint8_t * streamid, uint8_t * destaddr, u_int16_t vlan, int pktsz, int interval, int priority, int latency);
-int mrp_await_listener(unsigned char *streamid);
+int mrp_monitor(SOCKET mrpd_sock);
+int mrp_register_domain(SOCKET mrpd_sock, int *class_id, int *priority, u_int16_t *vid);
+int mrp_join_vlan(SOCKET mrpd_sock);
+int mrp_advertise_stream(SOCKET mrpd_sock, uint8_t * streamid, uint8_t * destaddr, u_int16_t vlan, int pktsz, int interval, int priority, int latency);
+int mrp_unadvertise_stream(SOCKET mrpd_sock, uint8_t * streamid, uint8_t * destaddr, u_int16_t vlan, int pktsz, int interval, int priority, int latency);
+int mrp_await_listener(SOCKET mrpd_sock, unsigned char *streamid);
 
 #endif /* _TALKER_MRP_CLIENT_H_ */

@@ -32,16 +32,10 @@
 
 ******************************************************************************/
 
-/*
- * simple_talker MRP client part
- * gcc -Wall -c -I../../daemons/mrpd talker_mrp_client.c
- */
-
+#include "mrpdclient.h"
 #include "talker_mrp_client.h"
 
 /* global variables */
-
-int control_socket = -1;
 
 volatile int halt_tx = 0;
 volatile int listeners = 0;
@@ -62,28 +56,7 @@ pthread_t monitor_thread;
 pthread_attr_t monitor_attr;
 unsigned char monitor_stream_id[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 
-/*
- * private
- */
-
-int send_mrp_msg(char *notify_data, int notify_len)
-{
-	struct sockaddr_in addr;
-	socklen_t addr_len;
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(MRPD_PORT_DEFAULT);
-	inet_aton("127.0.0.1", &addr.sin_addr);
-	addr_len = sizeof(addr);
-	if (control_socket != -1)
-		return sendto(control_socket, notify_data, notify_len, 0,
-			 (struct sockaddr *)&addr, addr_len);
-	else
-		return 0;
-}
-
-int process_mrp_msg(char *buf, int buflen)
+static int process_mrp_msg(char *buf, int buflen)
 {
 
 	/*
@@ -293,7 +266,7 @@ int process_mrp_msg(char *buf, int buflen)
 	return 0;
 }
 
-void *mrp_monitor_thread(void *arg)
+static void *mrp_monitor_thread(void *mrpd_sock)
 {
 	char *msgbuf;
 	struct sockaddr_in client_addr;
@@ -302,13 +275,12 @@ void *mrp_monitor_thread(void *arg)
 	int bytes = 0;
 	struct pollfd fds;
 	int rc;
-	(void) arg; /* unused */
 
 	msgbuf = (char *)malloc(MAX_MRPD_CMDSZ);
 	if (NULL == msgbuf)
 		return NULL;
 	while (!halt_tx) {
-		fds.fd = control_socket;
+		fds.fd = (SOCKET)mrpd_sock;
 		fds.events = POLLIN;
 		fds.revents = 0;
 		rc = poll(&fds, 1, 100);
@@ -331,7 +303,7 @@ void *mrp_monitor_thread(void *arg)
 		msg.msg_namelen = sizeof(client_addr);
 		msg.msg_iov = &iov;
 		msg.msg_iovlen = 1;
-		bytes = recvmsg(control_socket, &msg, 0);
+		bytes = recvmsg((SOCKET)mrpd_sock, &msg, 0);
 		if (bytes < 0)
 			continue;
 		process_mrp_msg(msgbuf, bytes);
@@ -344,82 +316,60 @@ void *mrp_monitor_thread(void *arg)
  * public
  */
 
-int mrp_connect(void)
-{
-	struct sockaddr_in addr;
-	int sock_fd = -1;
-	sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (sock_fd < 0)
-		goto out;
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(MRPD_PORT_DEFAULT);
-	inet_aton("127.0.0.1", &addr.sin_addr);
-	memset(&addr, 0, sizeof(addr));
-	control_socket = sock_fd;
-	return 0;
- out:	if (sock_fd != -1)
-		close(sock_fd);
-	sock_fd = -1;
-	return -1;
-}
-
-int mrp_disconnect(void)
-{
-	char *msgbuf;
-	int rc;
-	msgbuf = malloc(64);
-	if (NULL == msgbuf)
-		return -1;
-	memset(msgbuf, 0, 64);
-	sprintf(msgbuf, "BYE");
-	mrp_okay = 0;
-	rc = send_mrp_msg(msgbuf, 1500);
-
-	/* rc = recv_mrp_okay(); */
-	free(msgbuf);
-	return rc;
-}
-
-int mrp_monitor(void)
+int mrp_monitor(SOCKET mrpd_sock)
 {
 	pthread_attr_init(&monitor_attr);
-	pthread_create(&monitor_thread, NULL, mrp_monitor_thread, NULL);
+	pthread_create(&monitor_thread, NULL, mrp_monitor_thread, (void *)mrpd_sock);
 	return 0;
 }
 
-int mrp_register_domain(int *class_id, int *priority, u_int16_t * vid)
+int mrp_register_domain(SOCKET mrpd_sock, int *class_id, int *priority, u_int16_t * vid)
 {
 	char *msgbuf;
 	int rc;
 
-	msgbuf = malloc(64);
+	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
 		return -1;
-	memset(msgbuf, 0, 64);
+	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
 
 	sprintf(msgbuf, "S+D:C=%d,P=%d,V=%04x", *class_id, *priority, *vid);
 	mrp_okay = 0;
-	rc = send_mrp_msg(msgbuf, 1500);
+	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
 	free(msgbuf);
 
 	return rc;
 }
 
+int mrp_join_vlan(SOCKET mrpd_sock)
+{
+	char *msgbuf;
+	int rc;
+	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
+	if (NULL == msgbuf)
+		return -1;
+	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
+	sprintf(msgbuf, "V++:I=0002");
+	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
+
+	free(msgbuf);
+	return rc;
+}
 
 int
-mrp_advertise_stream(uint8_t * streamid,
-		     uint8_t * destaddr,
-		     u_int16_t vlan,
-		     int pktsz, int interval, int priority, int latency)
+mrp_advertise_stream(SOCKET mrpd_sock,
+		uint8_t * streamid,
+		uint8_t * destaddr,
+		u_int16_t vlan,
+		int pktsz, int interval, int priority, int latency)
 {
 	char *msgbuf;
 	int rc;
 
-	msgbuf = malloc(1500);
+	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
 		return -1;
-	memset(msgbuf, 0, 1500);
+	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
 
 	sprintf(msgbuf, "S++:S=%02X%02X%02X%02X%02X%02X%02X%02X"
 		",A=%02X%02X%02X%02X%02X%02X"
@@ -433,24 +383,25 @@ mrp_advertise_stream(uint8_t * streamid,
 		destaddr[3], destaddr[4], destaddr[5], vlan, pktsz,
 		interval, priority << 5, latency);
 	mrp_okay = 0;
-	rc = send_mrp_msg(msgbuf, 1500);
+	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
 	free(msgbuf);
 
 	return rc;
 }
 
 int
-mrp_unadvertise_stream(uint8_t * streamid,
-		       uint8_t * destaddr,
-		       u_int16_t vlan,
-		       int pktsz, int interval, int priority, int latency)
+mrp_unadvertise_stream(SOCKET mrpd_sock,
+		uint8_t * streamid,
+		uint8_t * destaddr,
+		u_int16_t vlan,
+		int pktsz, int interval, int priority, int latency)
 {
 	char *msgbuf;
 	int rc;
-	msgbuf = malloc(1500);
+	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
 		return -1;
-	memset(msgbuf, 0, 1500);
+	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
 	sprintf(msgbuf, "S--:S=%02X%02X%02X%02X%02X%02X%02X%02X"
 		",A=%02X%02X%02X%02X%02X%02X"
 		",V=%04X"
@@ -463,7 +414,7 @@ mrp_unadvertise_stream(uint8_t * streamid,
 		destaddr[3], destaddr[4], destaddr[5], vlan, pktsz,
 		interval, priority << 5, latency);
 	mrp_okay = 0;
-	rc = send_mrp_msg(msgbuf, 1500);
+	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
 
 	/* rc = recv_mrp_okay(); */
 	free(msgbuf);
@@ -471,18 +422,18 @@ mrp_unadvertise_stream(uint8_t * streamid,
 }
 
 
-int mrp_await_listener(unsigned char *streamid)
+int mrp_await_listener(SOCKET mrpd_sock, unsigned char *streamid)
 {
 	char *msgbuf;
 	int ret;
 
 	memcpy(monitor_stream_id, streamid, sizeof(monitor_stream_id));
-	msgbuf = malloc(64);
+	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
 		return -1;
-	memset(msgbuf, 0, 64);
+	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
 	sprintf(msgbuf, "S??");
-	ret = send_mrp_msg(msgbuf, 64);
+	ret = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
 	free(msgbuf);
 	if (ret == -1)
 		return -1;
@@ -497,8 +448,9 @@ int mrp_await_listener(unsigned char *streamid)
  * actually not used
  */
 
-int mrp_get_domain(int *class_a_id, int *a_priority, u_int16_t * a_vid,
-		   int *class_b_id, int *b_priority, u_int16_t * b_vid)
+int mrp_get_domain(SOCKET mrpd_sock,
+		int *class_a_id, int *a_priority, u_int16_t * a_vid,
+		int *class_b_id, int *b_priority, u_int16_t * b_vid)
 {
 	char *msgbuf;
 	int ret;
@@ -506,12 +458,12 @@ int mrp_get_domain(int *class_a_id, int *a_priority, u_int16_t * a_vid,
 	/* we may not get a notification if we are joining late,
 	 * so query for what is already there ...
 	 */
-	msgbuf = malloc(64);
+	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
 		return -1;
-	memset(msgbuf, 0, 64);
+	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
 	sprintf(msgbuf, "S??");
-	ret = send_mrp_msg(msgbuf, 64);
+	ret = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
 	free(msgbuf);
 	if (ret == -1)
 		return -1;
@@ -536,34 +488,19 @@ int mrp_get_domain(int *class_a_id, int *a_priority, u_int16_t * a_vid,
 	return 0;
 }
 
-int mrp_join_vlan()
+int mrp_join_listener(SOCKET mrpd_sock, uint8_t * streamid)
 {
 	char *msgbuf;
 	int rc;
-	msgbuf = malloc(1500);
+	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
 		return -1;
-	memset(msgbuf, 0, 1500);
-	sprintf(msgbuf, "V++:I=0002");
-	rc = send_mrp_msg(msgbuf, 1500);
-
-	free(msgbuf);
-	return rc;
-}
-
-int mrp_join_listener(uint8_t * streamid)
-{
-	char *msgbuf;
-	int rc;
-	msgbuf = malloc(1500);
-	if (NULL == msgbuf)
-		return -1;
-	memset(msgbuf, 0, 1500);
+	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
 	sprintf(msgbuf, "S+L:S=%02X%02X%02X%02X%02X%02X%02X%02X"
 		",D=2", streamid[0], streamid[1], streamid[2], streamid[3],
 		streamid[4], streamid[5], streamid[6], streamid[7]);
 	mrp_okay = 0;
-	rc = send_mrp_msg(msgbuf, 1500);
+	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
 
 	/* rc = recv_mrp_okay(); */
 	free(msgbuf);

@@ -46,6 +46,7 @@
 #include <pci/pci.h>
 
 #include "igb.h"
+#include "mrpdclient.h"
 #include "talker_mrp_client.h"
 
 #define VERSION_STR "1.0"
@@ -165,6 +166,7 @@ typedef struct __attribute__ ((packed)) {
 static const char *version_str = "simple_talker v" VERSION_STR "\n"
     "Copyright (c) 2012, Intel Corporation\n";
 
+SOCKET glob_mrpd_sock = INVALID_SOCKET;
 unsigned char glob_station_addr[] = { 0, 0, 0, 0, 0, 0 };
 unsigned char glob_stream_id[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 /* IEEE 1722 reserved address */
@@ -505,11 +507,13 @@ int main(int argc, char *argv[])
 		fprintf( stderr, "Must specify valid transport\n" );
 		usage();
 	}
-	rc = mrp_connect();
-	if (rc) {
-		printf("socket creation failed\n");
-		return errno;
+
+	glob_mrpd_sock = mrpdclient_init();
+	if (glob_mrpd_sock == SOCKET_ERROR) {
+		printf("mrpdclient_init failed\n");
+		return EXIT_FAILURE;
 	}
+
 	err = pci_connect(&igb_dev);
 	if (err) {
 		printf("connect failed (%s) - are you running as root?\n",
@@ -566,7 +570,7 @@ int main(int argc, char *argv[])
 		
 	}
 
-	mrp_monitor();
+	mrp_monitor(glob_mrpd_sock);
 	/* 
 	 * should use mrp_get_domain() but this is a simplification
 	 */
@@ -577,13 +581,13 @@ int main(int argc, char *argv[])
 	printf("detected domain Class A PRIO=%d VID=%04x...\n", domain_class_a_priority,
 	       domain_class_a_vid);
 
-	err = mrp_register_domain(&domain_class_a_id, &domain_class_a_priority, &domain_class_a_vid);
+	err = mrp_register_domain(glob_mrpd_sock, &domain_class_a_id, &domain_class_a_priority, &domain_class_a_vid);
 	if (err) {
 		printf("mrp_register_domain failed\n");
 		return EXIT_FAILURE;
 	}
 
-	mrp_join_vlan();
+	mrp_join_vlan(glob_mrpd_sock);
 
 	if( transport == 2 ) {
 		igb_set_class_bandwidth
@@ -742,7 +746,8 @@ int main(int argc, char *argv[])
 	 */
 	fprintf(stderr, "advertising stream ...\n");
 	if( transport == 2 ) {
-		err = mrp_advertise_stream(glob_stream_id, dest_addr,
+		err = mrp_advertise_stream(glob_mrpd_sock,
+					glob_stream_id, dest_addr,
 					domain_class_a_vid, PKT_SZ - 16,
 					L2_PACKET_IPG / 125000,
 					domain_class_a_priority, 3900);
@@ -752,7 +757,8 @@ int main(int argc, char *argv[])
 		 * not allowed, not sure the significance of the value 6, but
 		 * using it consistently
 		 */
-		err = mrp_advertise_stream(glob_stream_id, dest_addr,
+		err = mrp_advertise_stream(glob_mrpd_sock,
+					glob_stream_id, dest_addr,
 					domain_class_a_vid,
 					sizeof(*l4_headers) + L4_SAMPLES_PER_FRAME * CHANNELS * 2 + 6,
 					1,
@@ -764,7 +770,7 @@ int main(int argc, char *argv[])
 	}
 
 	fprintf(stderr, "awaiting a listener ...\n");
-	mrp_await_listener(glob_stream_id);
+	mrp_await_listener(glob_mrpd_sock, glob_stream_id);
 	listeners = 1;
 	printf("got a listener ...\n");
 	halt_tx = 0;
@@ -915,19 +921,21 @@ int main(int argc, char *argv[])
 	halt_tx = 1;
 	
 	if( transport == 2 ) {
-		mrp_unadvertise_stream
-			(glob_stream_id, dest_addr, domain_class_a_vid, PKT_SZ - 16, L2_PACKET_IPG / 125000,
-			 domain_class_a_priority, 3900);
+		mrp_unadvertise_stream(glob_mrpd_sock,
+				glob_stream_id, dest_addr, domain_class_a_vid, PKT_SZ - 16, L2_PACKET_IPG / 125000,
+				domain_class_a_priority, 3900);
 	} else {
-		mrp_unadvertise_stream
-			(glob_stream_id, dest_addr, domain_class_a_vid,
-			 sizeof(*l4_headers)+L4_SAMPLES_PER_FRAME*CHANNELS*2 + 6, 1,
-			 domain_class_a_priority, 3900);
+		mrp_unadvertise_stream(glob_mrpd_sock,
+				glob_stream_id, dest_addr, domain_class_a_vid,
+				sizeof(*l4_headers)+L4_SAMPLES_PER_FRAME*CHANNELS*2 + 6, 1,
+				domain_class_a_priority, 3900);
 	}
 	
 	igb_set_class_bandwidth(&igb_dev, 0, 0, 0, 0);	/* disable Qav */
 	
-	rc = mrp_disconnect();
+	rc = mrpdclient_close(&glob_mrpd_sock);
+	if (rc)
+		printf("mrpd_close failed\n");
 	
 	igb_dma_free_page(&igb_dev, &a_page);
 	rc = gptpdeinit(&igb_shm_fd, igb_mmap);

@@ -1,19 +1,24 @@
 CC=gcc
 OPT=-O2 -g
 CFLAGS=$(OPT) -Wall -Wextra -Wno-parentheses
-INCFLAGS=-I../../lib/igb -I../../daemons/mrpd -I../common
+INCFLAGS=-I../../lib/igb -I../../daemons/mrpd -I../common -I../mrp_client
 LDLIBS=-ligb -lpci -lrt -lm -pthread
 LDFLAGS=-L../../lib/igb
 
 all: simple_talker
 
-simple_talker: simple_talker.o ../common/talker_mrp_client.o
+simple_talker: simple_talker.o ../common/talker_mrp_client.o ../mrp_client/mrpdclient.o
 
 simple_talker.o: simple_talker.c
 	$(CC) $(CFLAGS) $(INCFLAGS) -c simple_talker.c
 
 ../common/talker_mrp_client.o: ../common/talker_mrp_client.c ../common/talker_mrp_client.h
 	make -C ../common/ talker_mrp_client.o
+
+../mrp_client/mrpdclient.o: \
+	../../examples/mrp_client/mrpdclient.c \
+	../../examples/mrp_client/mrpdclient.h
+	make -C ../../examples/mrp_client/ mrpdclient.o
 
 %: %.o
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
