@@ -42,7 +42,7 @@ static int msg_process(char *buf, int buflen)
 	{
 		l = 6; /* skip "Sxx T:" */
 		while ((l < buflen) && ('S' != buf[l++]));
-		if (l = buflen)
+		if (l == buflen)
 			return -1;
 		l++;
 		for(j = 0; j < 8 ; l+=2, j++)
