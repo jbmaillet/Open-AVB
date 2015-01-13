@@ -75,6 +75,10 @@ int report_domain_status(SOCKET mrpd_sock)
 	sprintf(buf, "S+D:C=6,P=3,V=0002");
 
 	rc = mrpdclient_sendto(mrpd_sock, buf, MRPDCLIENT_MAX_MSG_SIZE);
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
 	free(buf);
 
 	return rc;
@@ -92,8 +96,13 @@ int join_vlan(SOCKET mrpd_sock)
 	if (NULL == buf)
 		return -1;
 	memset(buf, 0, MRPDCLIENT_MAX_MSG_SIZE);
+
 	sprintf(buf, "V++:I=0002");
 	rc = mrpdclient_sendto(mrpd_sock, buf, MRPDCLIENT_MAX_MSG_SIZE);
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
 	free(buf);
 
 	return rc;
@@ -122,13 +131,17 @@ int send_ready(SOCKET mrpd_sock)
 	if (NULL == buf)
 		return -1;
 	memset(buf, 0, MRPDCLIENT_MAX_MSG_SIZE);
+
 	sprintf(buf, "S+L:L=%02x%02x%02x%02x%02x%02x%02x%02x, D=2",
 		     stream_id[0], stream_id[1],
 		     stream_id[2], stream_id[3],
 		     stream_id[4], stream_id[5],
 		     stream_id[6], stream_id[7]);
 	rc = mrpdclient_sendto(mrpd_sock, buf, MRPDCLIENT_MAX_MSG_SIZE);
-
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
 	free(buf);
 
 	return rc;
@@ -146,12 +159,17 @@ int send_leave(SOCKET mrpd_sock)
 	if (NULL == buf)
 		return -1;
 	memset(buf, 0, MRPDCLIENT_MAX_MSG_SIZE);
+
 	sprintf(buf, "S-L:L=%02x%02x%02x%02x%02x%02x%02x%02x, D=3",
 		     stream_id[0], stream_id[1],
 		     stream_id[2], stream_id[3],
 		     stream_id[4], stream_id[5],
 		     stream_id[6], stream_id[7]);
 	rc = mrpdclient_sendto(mrpd_sock, buf, MRPDCLIENT_MAX_MSG_SIZE);
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
 	free(buf);
 
 	return rc;

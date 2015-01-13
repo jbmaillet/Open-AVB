@@ -336,6 +336,10 @@ int mrp_register_domain(SOCKET mrpd_sock, int *class_id, int *priority, u_int16_
 	sprintf(msgbuf, "S+D:C=%d,P=%d,V=%04x", *class_id, *priority, *vid);
 	mrp_okay = 0;
 	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
 	free(msgbuf);
 
 	return rc;
@@ -345,14 +349,20 @@ int mrp_join_vlan(SOCKET mrpd_sock)
 {
 	char *msgbuf;
 	int rc;
+
 	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
 		return -1;
 	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
+
 	sprintf(msgbuf, "V++:I=0002");
 	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
-
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
 	free(msgbuf);
+
 	return rc;
 }
 
@@ -384,6 +394,10 @@ mrp_advertise_stream(SOCKET mrpd_sock,
 		interval, priority << 5, latency);
 	mrp_okay = 0;
 	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
 	free(msgbuf);
 
 	return rc;
@@ -398,10 +412,12 @@ mrp_unadvertise_stream(SOCKET mrpd_sock,
 {
 	char *msgbuf;
 	int rc;
+
 	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
 		return -1;
 	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
+
 	sprintf(msgbuf, "S--:S=%02X%02X%02X%02X%02X%02X%02X%02X"
 		",A=%02X%02X%02X%02X%02X%02X"
 		",V=%04X"
@@ -415,9 +431,12 @@ mrp_unadvertise_stream(SOCKET mrpd_sock,
 		interval, priority << 5, latency);
 	mrp_okay = 0;
 	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
-
-	/* rc = recv_mrp_okay(); */
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
 	free(msgbuf);
+
 	return rc;
 }
 
@@ -425,7 +444,7 @@ mrp_unadvertise_stream(SOCKET mrpd_sock,
 int mrp_await_listener(SOCKET mrpd_sock, unsigned char *streamid)
 {
 	char *msgbuf;
-	int ret;
+	int rc;
 
 	memcpy(monitor_stream_id, streamid, sizeof(monitor_stream_id));
 	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
@@ -433,14 +452,19 @@ int mrp_await_listener(SOCKET mrpd_sock, unsigned char *streamid)
 		return -1;
 	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
 	sprintf(msgbuf, "S??");
-	ret = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
+	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
 	free(msgbuf);
-	if (ret == -1)
+	if (rc == -1)
 		return -1;
 
 	/* either already there ... or need to wait ... */
 	while (!halt_tx && (listeners == 0))
 		usleep(20000);
+
 	return 0;
 }
 
@@ -453,7 +477,7 @@ int mrp_get_domain(SOCKET mrpd_sock,
 		int *class_b_id, int *b_priority, u_int16_t * b_vid)
 {
 	char *msgbuf;
-	int ret;
+	int rc;
 
 	/* we may not get a notification if we are joining late,
 	 * so query for what is already there ...
@@ -462,13 +486,20 @@ int mrp_get_domain(SOCKET mrpd_sock,
 	if (NULL == msgbuf)
 		return -1;
 	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
+
 	sprintf(msgbuf, "S??");
-	ret = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
+	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
 	free(msgbuf);
-	if (ret == -1)
+	if (rc == -1)
 		return -1;
+
 	while (!halt_tx && (domain_a_valid == 0) && (domain_b_valid == 0))
 		usleep(20000);
+
 	*class_a_id = 0;
 	*a_priority = 0;
 	*a_vid = 0;
@@ -492,18 +523,23 @@ int mrp_join_listener(SOCKET mrpd_sock, uint8_t * streamid)
 {
 	char *msgbuf;
 	int rc;
+
 	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
 		return -1;
 	memset(msgbuf, 0, MRPDCLIENT_MAX_MSG_SIZE);
+
 	sprintf(msgbuf, "S+L:S=%02X%02X%02X%02X%02X%02X%02X%02X"
 		",D=2", streamid[0], streamid[1], streamid[2], streamid[3],
 		streamid[4], streamid[5], streamid[6], streamid[7]);
 	mrp_okay = 0;
 	rc = mrpdclient_sendto(mrpd_sock, msgbuf, MRPDCLIENT_MAX_MSG_SIZE);
-
-	/* rc = recv_mrp_okay(); */
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
 	free(msgbuf);
+
 	return rc;
 }
 
