@@ -276,9 +276,13 @@ static void *mrp_monitor_thread(void *mrpd_sock)
 	struct pollfd fds;
 	int rc;
 
+	if (SOCKET_ERROR == (SOCKET)mrpd_sock)
+		return NULL;
+
 	msgbuf = (char *)malloc(MAX_MRPD_CMDSZ);
 	if (NULL == msgbuf)
 		return NULL;
+
 	while (!halt_tx) {
 		fds.fd = (SOCKET)mrpd_sock;
 		fds.events = POLLIN;
@@ -318,8 +322,12 @@ static void *mrp_monitor_thread(void *mrpd_sock)
 
 int mrp_monitor(SOCKET mrpd_sock)
 {
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
+
 	pthread_attr_init(&monitor_attr);
 	pthread_create(&monitor_thread, NULL, mrp_monitor_thread, (void *)mrpd_sock);
+
 	return 0;
 }
 
@@ -327,6 +335,9 @@ int mrp_register_domain(SOCKET mrpd_sock, int *class_id, int *priority, u_int16_
 {
 	char *msgbuf;
 	int rc;
+
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
 
 	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
@@ -349,6 +360,9 @@ int mrp_join_vlan(SOCKET mrpd_sock)
 {
 	char *msgbuf;
 	int rc;
+
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
 
 	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
@@ -375,6 +389,9 @@ mrp_advertise_stream(SOCKET mrpd_sock,
 {
 	char *msgbuf;
 	int rc;
+
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
 
 	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
@@ -413,6 +430,9 @@ mrp_unadvertise_stream(SOCKET mrpd_sock,
 	char *msgbuf;
 	int rc;
 
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
+
 	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
 		return -1;
@@ -446,6 +466,9 @@ int mrp_await_listener(SOCKET mrpd_sock, unsigned char *streamid)
 	char *msgbuf;
 	int rc;
 
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
+
 	memcpy(monitor_stream_id, streamid, sizeof(monitor_stream_id));
 	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
@@ -478,6 +501,9 @@ int mrp_get_domain(SOCKET mrpd_sock,
 {
 	char *msgbuf;
 	int rc;
+
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
 
 	/* we may not get a notification if we are joining late,
 	 * so query for what is already there ...
@@ -523,6 +549,9 @@ int mrp_join_listener(SOCKET mrpd_sock, uint8_t * streamid)
 {
 	char *msgbuf;
 	int rc;
+
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
 
 	msgbuf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
 	if (NULL == msgbuf)
