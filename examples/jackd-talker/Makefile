@@ -1,13 +1,13 @@
 CC = gcc
 OPT = -O2 -g
 CFLAGS = $(OPT) -Wall -Wextra -Wno-parentheses -std=gnu99
-INCFLAGS = -I../../lib/igb -I../../daemons/mrpd -I../common
+INCFLAGS = -I../../lib/igb -I../../daemons/mrpd -I../common -I../mrp_client
 LDLIBS = -ligb -lpci -lrt -pthread -ljack
 LDFLAGS = -L../../lib/igb
 
 all: jackd_talker
 
-jackd_talker: jackd_talker.o jack.o ../common/talker_mrp_client.o
+jackd_talker: jackd_talker.o jack.o ../common/talker_mrp_client.o ../mrp_client/mrpdclient.o
 
 jack.o: jack.c jack.h defines.h
 	$(CC) $(CFLAGS) -c jack.c
@@ -17,6 +17,11 @@ jackd_talker.o: jackd_talker.c defines.h jack.h
 
 ../common/talker_mrp_client.o:
 	make -C ../common/ talker_mrp_client.o
+
+../mrp_client/mrpdclient.o: \
+	../../examples/mrp_client/mrpdclient.c \
+	../../examples/mrp_client/mrpdclient.h
+	make -C ../../examples/mrp_client/ mrpdclient.o
 
 %: %.o
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
