@@ -7,7 +7,7 @@ LDFLAGS=-L ../../lib/igb/
 
 all: talker listener
 
-talker: talker.o ../common/avb.o ../common/talker_mrp_client.o
+talker: talker.o ../common/avb.o ../common/talker_mrp_client.o ../mrp_client/mrpdclient.o
 
 talker.o: talker.c
 	$(CC) $(CFLAGS) $(INCFLAGS) $(EXTRA_FLAGS) -c talker.c
