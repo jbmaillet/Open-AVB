@@ -52,7 +52,7 @@ void sigint_handler(int signum)
 	{
 		ret = mrpdclient_close(&glob_mrpd_sock);
 		if (ret)
-			printf("mrpd_close failed\n");
+			printf("mrpdclient_close failed\n");
 	}
 
 	exit(EXIT_SUCCESS);

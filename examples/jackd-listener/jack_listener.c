@@ -105,7 +105,7 @@ void shutdown_and_exit(int sig)
 	{
 		ret = mrpdclient_close(&glob_mrpd_sock);
 		if (ret)
-			printf("mrpd_close failed\n");
+			printf("mrpdclient_close failed\n");
 	}
 
 	if (NULL != handle) {

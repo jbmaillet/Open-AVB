@@ -935,7 +935,7 @@ int main(int argc, char *argv[])
 	
 	rc = mrpdclient_close(&glob_mrpd_sock);
 	if (rc)
-		printf("mrpd_close failed\n");
+		printf("mrpdclient_close failed\n");
 	
 	igb_dma_free_page(&igb_dev, &a_page);
 	rc = gptpdeinit(&igb_shm_fd, igb_mmap);
