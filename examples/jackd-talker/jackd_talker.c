@@ -49,6 +49,7 @@
 #include <jack/thread.h>
 
 #include "igb.h"
+#include "mrpdclient.h"
 #include "talker_mrp_client.h"
 #include "jack.h"
 #include "defines.h"
@@ -120,6 +121,7 @@ typedef struct {
 static const char *version_str = "simple_talker v" VERSION_STR "\n"
     "Copyright (c) 2012, Intel Corporation\n";
 
+SOCKET glob_mrpd_sock = INVALID_SOCKET;
 device_t glob_igb_dev;
 volatile int glob_unleash_jack = 0;
 pthread_t glob_packetizer_id;
@@ -421,11 +423,13 @@ int main(int argc, char *argv[])
 	if (NULL == interface) {
 		usage();
 	}
-	rc = mrp_connect();
-	if (rc) {
-		printf("socket creation failed\n");
-		return errno;
+
+	glob_mrpd_sock = mrpdclient_init();
+	if (glob_mrpd_sock == SOCKET_ERROR) {
+		printf("mrpdclient_init failed\n");
+		return EXIT_FAILURE;
 	}
+
 	err = pci_connect();
 	if (err) {
 		printf("connect failed (%s) - are you running as root?\n",
@@ -451,11 +455,7 @@ int main(int argc, char *argv[])
 		usage();
 	}
 
-	rc = mrp_monitor();
-	if (rc) {
-		printf("failed creating MRP monitor thread\n");
-		return EXIT_FAILURE;
-	}
+	mrp_monitor(glob_mrpd_sock);
 
 	/* 
 	 * should use mrp_get_domain() above but this is a simplification 
@@ -468,11 +468,13 @@ int main(int argc, char *argv[])
 	printf("detected domain Class A PRIO=%d VID=%04x...\n", domain_class_a_priority,
 	       domain_class_a_vid);
 
-	rc = mrp_register_domain(&domain_class_a_id, &domain_class_a_priority, &domain_class_a_vid);
-	if (rc) {
+	err = mrp_register_domain(glob_mrpd_sock, &domain_class_a_id, &domain_class_a_priority, &domain_class_a_vid);
+	if (err) {
 		printf("mrp_register_domain failed\n");
 		return EXIT_FAILURE;
 	}
+
+	// FIXME: why no VLAN join here?
 
 	igb_set_class_bandwidth(&glob_igb_dev, PACKET_IPG / 125000, 0, PKT_SZ - 22,
 				0);
@@ -563,19 +565,18 @@ int main(int argc, char *argv[])
 	_jackclient = init_jack();
 
 	fprintf(stderr, "advertising stream ...\n");
-	rc = mrp_advertise_stream(glob_stream_id, glob_dest_addr, domain_class_a_vid, PKT_SZ - 16,
-				PACKET_IPG / 125000, domain_class_a_priority, 3900);
-	if (rc) {
+	err = mrp_advertise_stream(glob_mrpd_sock,
+				glob_stream_id, glob_dest_addr,
+				domain_class_a_vid, PKT_SZ - 16,
+				PACKET_IPG / 125000,
+				domain_class_a_priority, 3900);
+	if (err) {
 		printf("mrp_advertise_stream failed\n");
 		return EXIT_FAILURE;
 	}
 
 	fprintf(stderr, "awaiting a listener ...\n");
-	rc = mrp_await_listener(glob_stream_id);
-	if (rc) {
-		printf("mrp_await_listener failed\n");
-		return EXIT_FAILURE;
-	}
+	mrp_await_listener(glob_mrpd_sock, glob_stream_id);
 	printf("got a listener ...\n");
 	halt_tx = 0;
 
@@ -612,16 +613,16 @@ int main(int argc, char *argv[])
 		printf("listener left ...\n");
 	halt_tx = 1;
 
-	rc = mrp_unadvertise_stream(glob_stream_id, glob_dest_addr, domain_class_a_vid, PKT_SZ - 16,
-				PACKET_IPG / 125000, domain_class_a_priority, 3900);
-	if (rc)
-		printf("mrp_unadvertise_stream failed\n");
+	mrp_unadvertise_stream(glob_mrpd_sock,
+			glob_stream_id, glob_dest_addr, domain_class_a_vid,
+			PKT_SZ - 16, PACKET_IPG / 125000,
+			domain_class_a_priority, 3900);
 
 	igb_set_class_bandwidth(&glob_igb_dev, 0, 0, 0, 0);	/* disable Qav */
 
-	rc = mrp_disconnect();
+	rc = mrpdclient_close(&glob_mrpd_sock);
 	if (rc)
-		printf("mrp_disconnect failed\n");
+		printf("mrpdclient_close failed\n");
 
 	igb_dma_free_page(&glob_igb_dev, &a_page);
 	rc = gptpdeinit(&igb_shm_fd, igb_mmap);

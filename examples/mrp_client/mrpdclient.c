@@ -47,9 +47,6 @@ static int rcv_timeout = 100;	/* 100 ms */
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-typedef int SOCKET;
-#define INVALID_SOCKET -1
-#define SOCKET_ERROR   -1
 #define closesocket(s) close(s);
 static struct timeval rcv_timeout = {
 	.tv_sec = 0,

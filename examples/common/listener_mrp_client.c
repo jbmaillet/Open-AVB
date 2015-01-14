@@ -22,42 +22,22 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
+#include "mrpdclient.h"
 #include "listener_mrp_client.h"
 
 /* global variables */
 
-int control_socket;
 volatile int talker = 0;
 unsigned char stream_id[8];
 
-/*
- * private
- */
-
-int send_msg(char *data, int data_len)
-{
-	struct sockaddr_in addr;
-
-	if (control_socket == -1)
-		return -1;
-	if (data == NULL)
-		return -1;
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(MRPD_PORT_DEFAULT);
-	addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-	inet_aton("127.0.0.1", &addr.sin_addr);
-	return sendto(control_socket, data, data_len, 0,
-		(struct sockaddr*)&addr, (socklen_t)sizeof(addr));
-}
-
-int msg_process(char *buf, int buflen)
+static int msg_process(char *buf, int buflen)
 {
 	uint32_t id;
 	int j, l;
 
-	fprintf(stderr, "Msg: %s\n", buf);
+	if (NULL == buf)
+		return -1;
+
 	if (strncmp(buf, "SNE T:", 6) == 0 || strncmp(buf, "SJO T:", 6) == 0)
 	{
 		l = 6; /* skip "Sxx T:" */
@@ -72,168 +52,125 @@ int msg_process(char *buf, int buflen)
 		}
 		talker = 1;
 	}
+
 	return 0;
-}
-
-int recv_msg()
-{
-	char *databuf;
-	int bytes = 0;
-	int ret;
-
-	databuf = (char *)malloc(1500);
-	if (NULL == databuf)
-		return -1;
-
-	memset(databuf, 0, 1500);
-	bytes = recv(control_socket, databuf, 1500, 0);
-	if (bytes <= -1)
-	{
-		free(databuf);
-		return -1;
-	}
-	ret = msg_process(databuf, bytes);
-	free(databuf);
-
-	return ret;
 }
 
 /*
  * public
  */
 
-int create_socket() // TODO FIX! =:-|
+int report_domain_status(SOCKET mrpd_sock)
 {
-	struct sockaddr_in addr;
-	control_socket = socket(AF_INET, SOCK_DGRAM, 0);
-		
-	/** in POSIX fd 0,1,2 are reserved */
-	if (2 > control_socket)
-	{
-		if (-1 > control_socket)
-			close(control_socket);
-	return -1;
-	}
-	
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(0);
-	
-	if(0 > (bind(control_socket, (struct sockaddr*)&addr, sizeof(addr)))) 
-	{
-		fprintf(stderr, "Could not bind socket.\n");
-		close(control_socket);
+	char* buf;
+	int rc;
+
+	if (SOCKET_ERROR == mrpd_sock)
 		return -1;
-	}
+
+	buf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
+	if (NULL == buf)
+		return -1;
+	memset(buf, 0, MRPDCLIENT_MAX_MSG_SIZE);
+	sprintf(buf, "S+D:C=6,P=3,V=0002");
+
+	rc = mrpdclient_sendto(mrpd_sock, buf, MRPDCLIENT_MAX_MSG_SIZE);
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
+	free(buf);
+
+	return rc;
+}
+
+int join_vlan(SOCKET mrpd_sock)
+{
+	char *buf;
+	int rc;
+
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
+
+	buf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
+	if (NULL == buf)
+		return -1;
+	memset(buf, 0, MRPDCLIENT_MAX_MSG_SIZE);
+
+	sprintf(buf, "V++:I=0002");
+	rc = mrpdclient_sendto(mrpd_sock, buf, MRPDCLIENT_MAX_MSG_SIZE);
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
+	else
+		rc = 0;
+	free(buf);
+
+	return rc;
+}
+
+int await_talker(SOCKET mrpd_sock)
+{
+	if (SOCKET_ERROR == mrpd_sock)
+		return -1;
+
+	while (0 == talker)
+		mrpdclient_recv(mrpd_sock, msg_process);
+
 	return 0;
 }
 
-int report_domain_status()
+int send_ready(SOCKET mrpd_sock)
 {
-	char* msgbuf;
+	char *buf;
 	int rc;
 
-	msgbuf = malloc(1500);
-	if (NULL == msgbuf)
+	if (SOCKET_ERROR == mrpd_sock)
 		return -1;
-	memset(msgbuf, 0, 1500);
-	sprintf(msgbuf, "S+D:C=6,P=3,V=0002");
-	rc = send_msg(msgbuf, 1500);
-	free(msgbuf);
 
-	if (rc != 1500)
+	buf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
+	if (NULL == buf)
 		return -1;
-	else
-		return 0;
-}
+	memset(buf, 0, MRPDCLIENT_MAX_MSG_SIZE);
 
-int join_vlan()
-{
-	char *msgbuf;
-	int rc;
-
-	msgbuf = malloc(1500);
-	if (NULL == msgbuf)
-		return -1;
-	memset(msgbuf, 0, 1500);
-	sprintf(msgbuf, "V++:I=0002");
-	rc = send_msg(msgbuf, 1500);
-	free(msgbuf);
-
-	if (rc != 1500)
-		return -1;
-	else
-		return 0;
-}
-
-int await_talker()
-{
-	while (0 == talker)	
-		recv_msg();
-	return 0;
-}
-
-int send_ready()
-{
-	char *databuf;
-	int rc;
-
-	databuf = malloc(1500);
-	if (NULL == databuf)
-		return -1;
-	memset(databuf, 0, 1500);
-	sprintf(databuf, "S+L:L=%02x%02x%02x%02x%02x%02x%02x%02x, D=2",
+	sprintf(buf, "S+L:L=%02x%02x%02x%02x%02x%02x%02x%02x, D=2",
 		     stream_id[0], stream_id[1],
 		     stream_id[2], stream_id[3],
 		     stream_id[4], stream_id[5],
 		     stream_id[6], stream_id[7]);
-	rc = send_msg(databuf, 1500);
-	free(databuf);
-
-	if (rc != 1500)
-		return -1;
+	rc = mrpdclient_sendto(mrpd_sock, buf, MRPDCLIENT_MAX_MSG_SIZE);
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
 	else
-		return 0;
+		rc = 0;
+	free(buf);
+
+	return rc;
 }
 
-int send_leave()
+int send_leave(SOCKET mrpd_sock)
 {
-	char *databuf;
+	char *buf;
 	int rc;
 
-	databuf = malloc(1500);
-	if (NULL == databuf)
+	if (SOCKET_ERROR == mrpd_sock)
 		return -1;
-	memset(databuf, 0, 1500);
-	sprintf(databuf, "S-L:L=%02x%02x%02x%02x%02x%02x%02x%02x, D=3",
+
+	buf = malloc(MRPDCLIENT_MAX_MSG_SIZE);
+	if (NULL == buf)
+		return -1;
+	memset(buf, 0, MRPDCLIENT_MAX_MSG_SIZE);
+
+	sprintf(buf, "S-L:L=%02x%02x%02x%02x%02x%02x%02x%02x, D=3",
 		     stream_id[0], stream_id[1],
 		     stream_id[2], stream_id[3],
 		     stream_id[4], stream_id[5],
 		     stream_id[6], stream_id[7]);
-	rc = send_msg(databuf, 1500);
-	free(databuf);
-
-	if (rc != 1500)
-		return -1;
+	rc = mrpdclient_sendto(mrpd_sock, buf, MRPDCLIENT_MAX_MSG_SIZE);
+	if (MRPDCLIENT_MAX_MSG_SIZE != rc)
+		rc = -1;
 	else
-		return 0;
-}
+		rc = 0;
+	free(buf);
 
-int mrp_disconnect()
-{
-	int rc;
-	char *msgbuf = malloc(1500);
-
-	if (NULL == msgbuf)
-		return -1;
-	memset(msgbuf, 0, 1500);
-
-	sprintf(msgbuf, "BYE");
-	rc = send_msg(msgbuf, 1500);
-	free(msgbuf);
-
-	if (rc != 1500)
-		return -1;
-	else
-		return 0;
+	return rc;
 }

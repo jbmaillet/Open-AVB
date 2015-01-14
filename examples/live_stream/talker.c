@@ -25,6 +25,7 @@
 #include <pci/pci.h>
 
 #include "avb.h"
+#include "mrpdclient.h"
 #include "talker_mrp_client.h"
 
 #define USE_MRPD 1
@@ -34,6 +35,7 @@
 
 /* globals */
 
+SOCKET glob_mrpd_sock = INVALID_SOCKET;
 uint32_t glob_payload_length;
 unsigned char glob_station_addr[] = { 0, 0, 0, 0, 0, 0 };
 unsigned char glob_stream_id[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -118,10 +120,10 @@ int main(int argc, char *argv[])
 	packet_size += sizeof(six1883_header) + sizeof(seventeen22_header) + sizeof(eth_header);
 
 #ifdef USE_MRPD
-	err = mrp_connect();
-	if (err) {
-		fprintf(stderr, "socket creation failed\n");
-		return errno;
+	glob_mrpd_sock = mrpdclient_init();
+	if (glob_mrpd_sock == SOCKET_ERROR) {
+		printf("mrpdclient_init failed\n");
+		return EXIT_FAILURE;
 	}
 #endif
 
@@ -152,12 +154,7 @@ int main(int argc, char *argv[])
 	}
 
 #ifdef USE_MRPD
-	err = mrp_monitor();
-	if (err) {
-		printf("failed creating MRP monitor thread\n");
-		return EXIT_FAILURE;
-	}
-
+	mrp_monitor(glob_mrpd_sock);
 	domain_a_valid = 1;
 	domain_class_a_id = MSRP_SR_CLASS_A;
 	domain_class_a_priority = MSRP_SR_CLASS_A_PRIO;
@@ -165,7 +162,7 @@ int main(int argc, char *argv[])
 	fprintf(stderr, "detected domain Class A PRIO=%d VID=%04x...\n", domain_class_a_priority,
 	       domain_class_a_vid);
 
-	err = mrp_register_domain(&domain_class_a_id, &domain_class_a_priority, &domain_class_a_vid);
+        err = mrp_register_domain(glob_mrpd_sock, &domain_class_a_id, &domain_class_a_priority, &domain_class_a_vid);
 	if (err) {
 		printf("mrp_register_domain failed\n");
 		return EXIT_FAILURE;
@@ -174,6 +171,7 @@ int main(int argc, char *argv[])
 	domain_a_valid = 1;
 	domain_class_a_vid = 2;
 	fprintf(stderr, "detected domain Class A PRIO=%d VID=%04x...\n", domain_class_a_priority, domain_class_a_vid);
+	// FIXME: why no VLAN join here?
 #endif
 
 	igb_set_class_bandwidth(&igb_dev, PACKET_IPG / 125000, 0, packet_size - 22, 0);
@@ -249,20 +247,18 @@ int main(int argc, char *argv[])
 	 * IPG is scaled to the Class (A) observation interval of packets per 125 usec
 	 */
 	fprintf(stderr, "advertising stream ...\n");
-	err = mrp_advertise_stream(glob_stream_id, glob_dest_addr, domain_class_a_vid, packet_size - 16,
-				PACKET_IPG / 125000, domain_class_a_priority, 3900);
+	err = mrp_advertise_stream(glob_mrpd_sock,
+				glob_stream_id, glob_dest_addr,
+				domain_class_a_vid, packet_size - 16,
+				PACKET_IPG / 125000,
+				domain_class_a_priority, 3900);
 	if (err) {
 		printf("mrp_advertise_stream failed\n");
 		return EXIT_FAILURE;
 	}
 
 	fprintf(stderr, "awaiting a listener ...\n");
-	err = mrp_await_listener(glob_stream_id);
-	if (err) {
-		printf("mrp_await_listener failed\n");
-		return EXIT_FAILURE;
-	}
-
+	mrp_await_listener(glob_mrpd_sock, glob_stream_id);
 #endif
 
 	memset(&sched, 0 , sizeof (sched));
@@ -331,17 +327,16 @@ cleanup:
 	halt_tx = 1;
 	sleep(1);
 #ifdef USE_MRPD
-	err = mrp_unadvertise_stream(glob_stream_id, glob_dest_addr, domain_class_a_vid, packet_size - 16,
-				PACKET_IPG / 125000, domain_class_a_priority, 3900);
-	if (err)
-		printf("mrp_unadvertise_stream failed\n");
+	mrp_unadvertise_stream(glob_mrpd_sock,
+			glob_stream_id, glob_dest_addr, domain_class_a_vid, packet_size - 16, PACKET_IPG / 125000,
+			domain_class_a_priority, 3900);
 #endif
 	/* disable Qav */
 	igb_set_class_bandwidth(&igb_dev, 0, 0, 0, 0);
 #ifdef USE_MRPD
-	err = mrp_disconnect();
+	err = mrpdclient_close(&glob_mrpd_sock);
 	if (err)
-		printf("mrp_disconnect failed\n");
+		printf("mrpdclient_close failed\n");
 #endif
 	igb_dma_free_page(&igb_dev, &a_page);
 

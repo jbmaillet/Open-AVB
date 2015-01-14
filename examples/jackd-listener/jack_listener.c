@@ -31,6 +31,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <jack/ringbuffer.h>
 #include <sndfile.h>
 
+#include "mrpdclient.h"
 #include "listener_mrp_client.h"
 
 #define LIBSND 1
@@ -66,6 +67,7 @@ struct ethernet_header{
 static const char *version_str = "jack_listener v" VERSION_STR "\n"
     "Copyright (c) 2013, Katja Rohloff\n";
 
+int glob_mrpd_sock = INVALID_SOCKET;
 pcap_t* handle;
 u_char glob_ether_type[] = { 0x22, 0xf0 };
 SNDFILE* snd_file;
@@ -96,16 +98,15 @@ void shutdown_and_exit(int sig)
 	fprintf(stdout,"Leaving...\n");
 
 	if (0 != talker) {
-		ret = send_leave();
-		if (ret)
-			printf("send_leave failed\n");
+		send_leave(glob_mrpd_sock);
 	}
 
-	ret = mrp_disconnect();
-	if (ret)
-		printf("mrp_disconnect failed\n");
-
-	close(control_socket);
+	if (-1 != glob_mrpd_sock)
+	{
+		ret = mrpdclient_close(&glob_mrpd_sock);
+		if (ret)
+			printf("mrpdclient_close failed\n");
+	}
 
 	if (NULL != handle) {
 		pcap_breakloop(handle);
@@ -307,7 +308,6 @@ int main(int argc, char *argv[])
 	char errbuf[PCAP_ERRBUF_SIZE];
 	struct bpf_program comp_filter_exp;		/** The compiled filter expression */
 	char filter_exp[] = "ether dst 91:E0:F0:00:0e:80";	/** The filter expression */
-	int rc;
 
 	signal(SIGINT, shutdown_and_exit);
 	
@@ -331,27 +331,21 @@ int main(int argc, char *argv[])
 		help();
 	}
 
-	if (create_socket()) {
-		fprintf(stderr, "Socket creation failed.\n");
-		return errno;
-	}
-
-	rc = report_domain_status();
-	if (rc) {
-		printf("report_domain_status failed\n");
+	glob_mrpd_sock = mrpdclient_init();
+	if (glob_mrpd_sock == SOCKET_ERROR) {
+		printf("mrpdclient_init failed\n");
 		return EXIT_FAILURE;
 	}
+
+	report_domain_status(glob_mrpd_sock);
+	join_vlan(glob_mrpd_sock);
 
 	init_jack();
 	
 	fprintf(stdout,"Waiting for talker...\n");
-	await_talker();	
+	await_talker(glob_mrpd_sock);
 
-	rc = send_ready();
-	if (rc) {
-		printf("send_ready failed\n");
-		return EXIT_FAILURE;
-	}
+	send_ready(glob_mrpd_sock);
 
 #if LIBSND
 	char* filename = "listener.wav";
